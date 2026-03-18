@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <title>遊戲專區</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    .card:hover { transform: scale(1.03); transition: 0.2s; }
+    .hidden { display: none !important; }
+    .list-group-item { cursor: pointer; }
+    .text-2lines {
+      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+    }
+  </style>
+</head>
+<body class="bg-light">
+
+<div class="container py-4">
+
+  <!-- 標題與返回首頁 -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">🎮 遊戲專區</h2>
+    <a id="backHome" href="/student/student_home.html" class="btn btn-outline-secondary">返回學生首頁</a>
+  </div>
+
+  <!-- 學生資訊 -->
+  <div class="alert alert-info d-flex align-items-center gap-2 mb-4" id="studentInfo">
+    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+    <span>學生資料載入中...</span>
+  </div>
+
+  <!-- 選擇卡 -->
+  <div id="stageSelect" class="row g-4">
+    <div class="col-md-6">
+      <div id="teacherCard" class="card h-100 text-center choice-card">
+        <div class="card-body d-flex flex-column">
+          <h3>👩‍🏫 教師指定成語</h3>
+          <p class="card-text text-muted">由老師設定的專屬成語題庫。</p>
+          <button id="openTeacherBtn" class="btn btn-primary mt-auto" type="button" data-bs-toggle="modal" data-bs-target="#TeachingchengyuModal">進入題庫</button>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div id="searchCard" class="card h-100 text-center choice-card">
+        <div class="card-body d-flex flex-column">
+          <h3>🔍 自由題庫遊戲</h3>
+          <p class="card-text text-muted">從所有成語中隨機出題！可選不同遊戲模式。</p>
+
+          <!-- 模式選擇 -->
+          <div class="mb-3">
+            <label for="freeModeSelect" class="form-label small text-muted">遊戲模式</label>
+            <select id="freeModeSelect" class="form-select form-select-sm w-auto mx-auto">
+              <option value="puzzle">🧩 成語拼圖</option>
+              <option value="finder">✍️ 找成語</option>
+              <option value="dice">🎲 成語擲骰子</option>
+            </select>
+          </div>
+
+          <button id="startFreeGameBtn" class="btn btn-info text-white mt-auto" type="button">開始遊戲</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 教師指定題庫 Modal（含週次+模式下拉） -->
+<div class="modal fade" id="TeachingchengyuModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+    <div class="modal-content">
+      <div class="modal-header align-items-center flex-wrap gap-2">
+        <h5 class="modal-title me-2">👩‍🏫 教師指定成語</h5>
+
+        <div class="d-flex align-items-center gap-2">
+          <label for="tWeekSelect" class="form-label mb-0 small text-muted">週次</label>
+          <select id="tWeekSelect" class="form-select form-select-sm" style="width:auto"></select>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+          <label for="tModeSelect" class="form-label mb-0 small text-muted">遊戲模式</label>
+          <select id="tModeSelect" class="form-select form-select-sm" style="width:auto">
+            <option value="puzzle">🧩 成語拼圖</option>
+            <option value="finder">✍️ 找成語</option>
+            <option value="image">📷 看圖填成語</option>
+          </select>
+        </div>
+
+        <button class="btn-close ms-auto" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <div id="tLoading" class="text-center py-2 d-none"><div class="spinner-border" role="status" aria-label="Loading"></div></div>
+        <div id="tEmpty" class="alert alert-warning py-2 d-none">此週沒有資料。</div>
+        <div class="row g-3">
+          <div class="col-md-5">
+            <ul id="tResultList" class="list-group small" aria-label="教師指定題目清單"></ul>
+          </div>
+          <div class="col-md-7">
+            <div id="tDetail" class="border rounded p-3 text-break text-muted">請先選擇左側結果</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer justify-content-between">
+        <div>
+          <span id="tCountText" class="small text-muted me-3"></span>
+          <span class="small text-muted">模式：<b id="tModeEcho">🧩 成語拼圖</b></span>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+          <button class="btn btn-primary" id="startGameFromModal" type="button">開始遊戲</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 隱藏音訊播放器（TTS用） -->
+<audio id="ttsAudio" preload="auto"></audio>
+
+<!-- 必要 JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+/* ===== 基本工具 ===== */
+const socket = io();
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','"':'&quot;',"'":'&#39;'}[m]));
+
+/* ===== 欄位容錯 ===== */
+function pick(obj, keys, fallback = '') {
+  for (const k of keys) {
+    if (obj && obj[k] != null && obj[k] !== '') return obj[k];
+  }
+  return fallback;
+}
+
+/* ===== URL 參數帶回 ===== */
+function addParams(href, params) {
+  const u = new URL(href, location.origin);
+  for (const [k,v] of Object.entries(params)) u.searchParams.set(k, v);
+  return u.toString();
+}
+
+/* ===== 遊戲路由設定（依實際檔名調整） ===== */
+const GAME_ROUTES = {
+  puzzle: '/student/games/puzzle.html',   // 🧩 成語拼圖
+  finder: '/student/games/findIdiom/find.html',     // ✍️ 找成語
+  dice:   '/student/games/diceidiom/dice.html',     // 🎲 成語擲骰子
+  image:  '/student/games/guessIdiom/guess.html',     // 📷 看圖填成語
+};
+
+/* ===== 初始化學生資訊 (含後端 initStudentgames) ===== */
+let globalStudent = { cls: '', no: '', name: '' };
+let currentSelection = { word: '', week: '' };
+
+(function initStudentInfo(){
+  const raw = sessionStorage.getItem('studentCtx');
+  if (!raw) { location.href = '/student/login.html'; return; }
+  let ctx;
+  try { ctx = JSON.parse(raw); }
+  catch { sessionStorage.removeItem('studentCtx'); location.href='/student/login.html'; return; }
+
+  const cls  = String(ctx?.className ?? '').trim();
+  const no   = String(ctx?.number ?? '').trim();
+  let name   = String(ctx?.name ?? '').trim();
+  const room = new URLSearchParams(location.search).get('room') || "studentGames";
+
+  if (!cls || !no) { sessionStorage.removeItem('studentCtx'); location.href = '/student/login.html'; return; }
+
+  globalStudent = { cls, no, name };
+
+  $('#studentInfo').innerHTML = `班級：<b>${esc(cls)}</b> ／ 座號：<b>${esc(no)}</b> ／ 姓名：<b>${esc(name || '同學')}</b>`;
+  $('#backHome').href = addParams($('#backHome').getAttribute('href'), { cls, no });
+
+  socket.emit('initStudentgames', cls, no, room);
+  socket.on('initStudentgamesResult', (res) => {
+    if (!res?.ok) return;
+    if (res.name) {
+      name = String(res.name).trim();
+      globalStudent.name = name;
+      const nextCtx = { ...ctx, name };
+      sessionStorage.setItem('studentCtx', JSON.stringify(nextCtx));
+      $('#studentInfo').innerHTML = `班級：<b>${esc(cls)}</b> ／ 座號：<b>${esc(no)}</b> ／ 姓名：<b>${esc(name)}</b>`;
+    }
+  });
+})();
+
+/* ===== 教師指定題庫：資料快取 ===== */
+const teachingCache = {
+  weeks: [],          // ['1','2',...]
+  byWeek: new Map(),  // week => rows[]
+  initialLoaded: false
+};
+
+/* ===== Modal 開啟：載入週次 + 預設週 ===== */
+const teachingModalEl = document.getElementById('TeachingchengyuModal');
+teachingModalEl.addEventListener('show.bs.modal', () => {
+  const lastMode = localStorage.getItem('lastGameMode') || 'puzzle';
+  $('#tModeSelect').value = lastMode;
+  $('#tModeEcho').textContent = modeEchoText(lastMode);
+
+  if (!teachingCache.initialLoaded) {
+    loadAllWeeksAndInit();
+  }
+});
+
+/* 週次與模式下拉事件 */
+$('#tWeekSelect').addEventListener('change', (e) => loadWeek(e.target.value));
+$('#tModeSelect').addEventListener('change', (e) => {
+  const val = e.target.value;
+  localStorage.setItem('lastGameMode', val);
+  $('#tModeEcho').textContent = modeEchoText(val);
+});
+
+/* ===== 取全部以萃取週次 ===== */
+function loadAllWeeksAndInit() {
+  toggleTeachingLoading(true);
+  socket.emit('studentTeachingInit');
+
+  socket.once('studentTeachingInitResult', (rows) => {
+    toggleTeachingLoading(false);
+
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length) {
+      teachingCache.weeks = [];
+      renderWeekOptions([]);
+      renderResultList([]);
+      setDetailPlaceholder('此課程目前沒有指定題庫');
+      setCountText(0, '-');
+      $('#tEmpty').classList.remove('d-none');
+      return;
+    }
+
+    const weeks = [...new Set(list.map(r => String(r.week)))].filter(Boolean).sort((a,b)=> Number(a)-Number(b));
+    teachingCache.weeks = weeks;
+    teachingCache.initialLoaded = true;
+
+    renderWeekOptions(weeks);
+
+    const first = weeks[0];
+    $('#tWeekSelect').value = first;
+    loadWeek(first);
+  });
+}
+
+/* ===== 載入特定週（含快取） ===== */
+function loadWeek(week) {
+  if (!week) return;
+  $('#tEmpty').classList.add('d-none');
+  toggleTeachingLoading(true);
+
+  if (teachingCache.byWeek.has(week)) {
+    const rows = teachingCache.byWeek.get(week);
+    toggleTeachingLoading(false);
+    renderWeekData(week, rows);
+    return;
+  }
+
+  socket.emit('getTeachingTasksByWeek', week);
+  socket.once('teachingTasksByWeekResult', (rows) => {
+    toggleTeachingLoading(false);
+    const list = Array.isArray(rows) ? rows : [];
+    teachingCache.byWeek.set(week, list);
+    renderWeekData(week, list);
+  });
+}
+
+/* ===== 渲染週資料 ===== */
+function renderWeekData(week, rows) {
+  renderResultList(rows);
+  setCountText(rows.length, week);
+  if (!rows.length) {
+    setDetailPlaceholder('此週沒有資料');
+    $('#tEmpty').classList.remove('d-none');
+    currentSelection = { word: '', week };
+    return;
+  }
+  // 預設選第一筆
+  selectListItemByIndex(0);
+  renderDetail(rows[0], week);
+}
+
+/* ===== UI 輔助 ===== */
+function toggleTeachingLoading(show) { $('#tLoading').classList.toggle('d-none', !show); }
+function setCountText(count, weekStr) { $('#tCountText').textContent = (weekStr && weekStr !== '-') ? `第 ${weekStr} 週，共 ${count} 筆` : `共 ${count} 筆`; }
+function setDetailPlaceholder(text) { $('#tDetail').innerHTML = `<div class="text-muted">${esc(text)}</div>`; }
+function modeEchoText(mode) {
+  return ({puzzle:'🧩 成語拼圖', finder:'✍️ 找成語', dice:'🎲 成語擲骰子', image:'📷 看圖填成語'})[mode] || '🧩 成語拼圖';
+}
+
+/* ===== 週次下拉渲染 ===== */
+function renderWeekOptions(weeks) {
+  $('#tWeekSelect').innerHTML = weeks.map(w => `<option value="${esc(w)}">第 ${esc(w)} 週</option>`).join('');
+}
+
+/* ===== 清單渲染與互動 ===== */
+function renderResultList(rows) {
+  const list = $('#tResultList');
+  list.innerHTML = rows.map((r, idx) => {
+    const word     = pick(r, ['idiom','word','title'], '');
+    const meaning  = pick(r, ['meaning','definition','explain','summary','desc'], '');
+    return `
+      <li class="list-group-item d-flex flex-column gap-1" data-index="${idx}" tabindex="0" role="button" aria-label="${esc(word)}">
+        <div class="fw-semibold">${esc(word)}</div>
+        <div class="text-muted text-2lines">${esc(meaning)}</div>
+      </li>
+    `;
+  }).join('');
+
+  list.onclick = (ev) => {
+    const li = ev.target.closest('li[data-index]');
+    if (!li) return;
+    const idx = Number(li.dataset.index || 0);
+    selectListItemByIndex(idx);
+    const week = $('#tWeekSelect').value;
+    const rows = teachingCache.byWeek.get(week) || [];
+    renderDetail(rows[idx], week);
+  };
+  list.onkeydown = (ev) => {
+    if (ev.key !== 'Enter') return;
+    const li = ev.target.closest('li[data-index]');
+    if (!li) return;
+    li.click();
+  };
+}
+function selectListItemByIndex(idx) {
+  $$('#tResultList li').forEach((li,i) => li.classList.toggle('active', i === idx));
+}
+
+/* ===== 詳情渲染（🔊 播放發音） ===== */
+function renderDetail(row, weekFromList) {
+  if (!row) { setDetailPlaceholder('請先選擇左側結果'); return; }
+
+  const word     = pick(row, ['idiom','word','title'], '');
+  const zhuyin   = pick(row, ['bopomofo','zhuyin','pinyin'], '');
+  const meaning  = pick(row, ['meaning','definition','explain','summary','desc'], '');
+  const example  = pick(row, ['example','examples','sentence','sentences'], '');
+  const source   = pick(row, ['source','origin','ref'], '');
+  const week     = String(pick(row, ['week'], weekFromList || $('#tWeekSelect').value || ''));
+
+  currentSelection = { word, week };
+
+  $('#tDetail').innerHTML = `
+    <div class="d-flex justify-content-between align-items-start">
+      <div>
+        <h4 class="mb-1">${esc(word)}</h4>
+        <div class="small text-muted">第 ${esc(week)} 週</div>
+      </div>
+      <button class="btn btn-sm btn-outline-success" id="playTTSBtn" type="button">
+        <span class="tts-label">🔊 播放發音</span>
+      </button>
+    </div>
+    <hr />
+    ${zhuyin ? `<p><strong>注音／拼音：</strong>${esc(zhuyin)}</p>` : ''}
+    ${meaning ? `<p><strong>解釋：</strong>${esc(meaning)}</p>` : ''}
+    ${example ? `<p class="mb-0"><strong>例句：</strong>${esc(example)}</p>` : ''}
+    ${source ? `<p class="mt-2 text-muted small">資料來源：${esc(source)}</p>` : '' }
+  `;
+
+  // 綁定 TTS 播放
+  $('#playTTSBtn').onclick = () => playTTS(word);
+}
+
+/* ===== 語音播放：向後端請求 TTS，回傳 base64 MP3 並播放 ===== */
+async function playTTS(word) {
+  if (!word) return;
+
+  const btn = $('#playTTSBtn');
+  const labelEl = btn?.querySelector('.tts-label');
+  const oldText = labelEl ? labelEl.textContent : '';
+
+  // UI：loading 狀態
+  btn?.setAttribute('disabled', 'disabled');
+  if (labelEl) labelEl.textContent = '產生語音中…';
+
+  // 註冊一次性回傳/錯誤監聽
+  const onResult = ({ data, mime }) => {
+    try {
+      const audio = $('#ttsAudio');
+      // 方式1：直接 data URI
+      audio.src = `data:${mime || 'audio/mpeg'};base64,${data}`;
+      audio.play().catch(()=>{});
+    } finally {
+      cleanup();
+    }
+  };
+  const onError = (msg) => {
+    alert(msg || '語音產生失敗');
+    cleanup();
+  };
+  const cleanup = () => {
+    socket.off('ttsWordResult', onResult);
+    socket.off('ttsWordError', onError);
+    btn?.removeAttribute('disabled');
+    if (labelEl) labelEl.textContent = oldText || '🔊 播放發音';
+  };
+
+  socket.once('ttsWordResult', onResult);
+  socket.once('ttsWordError', onError);
+
+  // 送出請求
+  socket.emit('ttsWord', String(word || ''));
+}
+
+/* ===== 開始遊戲（使用 Modal 內的模式下拉） ===== */
+$('#startGameFromModal').addEventListener('click', onStartGame);
+
+function onStartGame() {
+  const mode = $('#tModeSelect').value || 'puzzle';
+  const route = GAME_ROUTES[mode] || GAME_ROUTES.puzzle;
+  const { word, week } = currentSelection;
+
+  if (!week) { alert('請先選擇週次'); return; }
+  if (!word) { alert('請先從左側清單選擇一筆題目'); return; }
+
+  try { localStorage.setItem('lastGameMode', mode); } catch {}
+
+  socket.emit('studentGameSelect', mode);
+
+  const params = new URLSearchParams({
+    mode, word, week,
+    cls: globalStudent.cls || '',
+    no:  globalStudent.no  || '',
+    name: globalStudent.name || ''
+  });
+  window.location.href = `${route}?${params.toString()}`;
+}
+
+/* ===== 自由題庫：模式選擇 + 導頁 ===== */
+$('#startFreeGameBtn').addEventListener('click', () => {
+  const mode = $('#freeModeSelect').value || 'puzzle';
+  const route = GAME_ROUTES[mode] || GAME_ROUTES.puzzle;
+
+  try { localStorage.setItem('lastGameMode', mode); } catch {}
+
+  socket.emit('studentGameSelect', mode);
+
+  const params = new URLSearchParams({
+    mode,
+    cls: globalStudent.cls || '',
+    no:  globalStudent.no  || '',
+    name: globalStudent.name || '',
+    source: 'free' // 告訴遊戲這是自由題庫模式
+  });
+
+  window.location.href = `${route}?${params.toString()}`;
+});
+
+</script>
+</body>
+</html>

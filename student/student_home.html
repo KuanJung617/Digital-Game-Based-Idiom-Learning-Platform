@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>學生首頁</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<div class="container py-4">
+  <!-- 學生資訊 -->
+  <div class="text-center mb-4">
+    <h2 id="welcomeText">歡迎，學生</h2>
+    <p class="text-muted" id="studentInfo">班級 / 座號 / 姓名</p>
+    <button id="logoutBtn" class="btn btn-outline-danger btn-sm">登出</button>
+    <a href="/student/login.html" class="btn btn-outline-secondary btn-sm">返回首頁</a>
+  </div>
+
+  <!-- 功能選單 -->
+  <div class="row g-4">
+    <!-- 學習專區 -->
+    <div class="col-md-3">
+      <div class="card h-100 shadow text-center">
+        <div class="card-body d-flex flex-column justify-content-center">
+          <h4 class="card-title">📚 學習專區</h4>
+          <p class="card-text text-muted">進入老師提供的學習教材與練習活動。</p>
+          <a href="/student/study.html" class="btn btn-info mt-auto text-white">開始學習</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 遊戲專區 -->
+    <div class="col-md-3">
+      <div class="card h-100 shadow text-center">
+        <div class="card-body d-flex flex-column justify-content-center">
+          <h4 class="card-title">🎮 遊戲專區</h4>
+          <p class="card-text text-muted">挑戰各種成語遊戲，題目來自老師出的題庫。</p>
+          <a href="/student/games.html" class="btn btn-primary mt-auto">進入遊戲</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 測驗專區 -->
+    <div class="col-md-3">
+      <div class="card h-100 shadow text-center">
+        <div class="card-body d-flex flex-column justify-content-center">
+          <h4 class="card-title">📝 測驗專區</h4>
+          <p class="card-text text-muted">參加老師安排的正式測驗，檢驗學習成果。</p>
+          <a href="/student/Quiz/quiz.html" class="btn btn-success mt-auto">進入測驗</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 學習成果 -->
+    <div class="col-md-3">
+      <div class="card h-100 shadow text-center">
+        <div class="card-body d-flex flex-column justify-content-center">
+          <h4 class="card-title">🏆 學習成果</h4>
+          <p class="card-text text-muted">查看自己的遊戲分數與測驗成績。</p>
+          <a href="records.html" class="btn btn-warning mt-auto">查看成果</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- 成語查詢 Modal -->
+<div class="modal fade" id="chengyuSearchModal" tabindex="-1" aria-labelledby="chengyuSearchLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="chengyuSearchLabel">🔍 自由查詢成語</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉"></button>
+      </div>
+      <div class="modal-body">
+        <form id="chengyuSearchForm" class="row g-2 mb-2" onsubmit="return false;">
+          <div class="col-md-9">
+            <input id="chengyuKeyword" type="text" class="form-control" placeholder="輸入關鍵字，例如：出爾反爾 / 反爾 / 反覆" />
+          </div>
+          <div class="col-md-3 d-grid">
+            <button id="btnChengyuSearch" class="btn btn-primary" type="button">搜尋</button>
+          </div>
+        </form>
+
+        <div id="chengyuSearchHint" class="text-muted small">可輸入完整成語或部分關鍵字</div>
+        <div id="chengyuLoading" class="d-none text-center py-3">
+          <div class="spinner-border" role="status"></div>
+          <div class="small mt-2">查詢中…</div>
+        </div>
+
+        <div class="row mt-2">
+          <div class="col-md-5">
+            <h6 class="mb-2">查詢結果</h6>
+            <ul id="chengyuResultList" class="list-group small"></ul>
+          </div>
+          <div class="col-md-7">
+            <h6 class="mb-2">成語內容</h6>
+            <div id="chengyuDetail" class="border rounded p-3 text-break">
+              <div class="text-muted">請先從左側選擇一筆結果</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <div class="small text-muted" id="chengyuCount"></div>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const $ = (s) => document.querySelector(s);
+
+function getCurrentRoom() {
+  const url = new URL(location.href);
+  return (url.searchParams.get('room') || document.body?.dataset?.room || '').trim() || null;
+}
+
+function getCtxOrRedirect() {
+  try {
+    const raw = sessionStorage.getItem('studentCtx');
+    if (!raw) throw 0;
+    const ctx = JSON.parse(raw);
+    const className = String(ctx?.className || '').trim();
+    const number    = String(ctx?.number    || '').trim();
+    const name      = String(ctx?.name      || '').trim();
+    if (!className || !number) throw 0;
+    return { className, number, name };
+  } catch {
+    sessionStorage.removeItem('studentCtx');
+    location.href = '/student/login.html';
+    return null;
+  }
+}
+
+function applyStudentParams(ctx) {
+  // 讓頁面上的連結都自動帶上 cls/no（只處理本站相對/同源連結）
+  document.querySelectorAll('a[href]').forEach(a => {
+    try {
+      const u = new URL(a.getAttribute('href'), location.origin);
+      if (u.origin !== location.origin) return;       // 外站不處理
+      u.searchParams.set('cls', ctx.className);
+      u.searchParams.set('no',  ctx.number);
+      a.setAttribute('href', u.toString());
+    } catch {}
+  });
+}
+
+function renderHeader(ctx) {
+  const nick = ctx.name || '同學';
+  $('#welcomeText').textContent = `歡迎，${nick}`;
+  $('#studentInfo').textContent = `${ctx.className} 班／座號 ${ctx.number}／${nick}`;
+}
+
+(function init() {
+  const ctx = getCtxOrRedirect();
+  if (!ctx) return;
+
+  let room = getCurrentRoom() || 'studentHome';
+  applyStudentParams(ctx);     // 把參數帶到所有連結
+  renderHeader(ctx);           // 先以 session 的 name 顯示（可能為空）
+
+  socket.emit('studentHomeInit', { className: ctx.className, number: ctx.number, room });
+
+  socket.once('studentHomeInitResult', (res) => {
+    if (!res?.ok) return console.warn('presence init failed:', res?.message || 'unknown');
+    // 後端若查到姓名就更新 UI 並回存 sessionStorage
+    if (res.name) {
+      const newCtx = { ...ctx, name: String(res.name) };
+      sessionStorage.setItem('studentCtx', JSON.stringify(newCtx));
+      renderHeader(newCtx);
+      applyStudentParams(newCtx);
+    }
+  });
+
+  // 心跳維持在線
+  const hb = setInterval(() => socket.emit('presence:ping'), 30_000);
+  window.addEventListener('beforeunload', () => clearInterval(hb));
+
+  // 登出：清掉 session 後回登入頁
+  $('#logoutBtn')?.addEventListener('click', () => {
+    sessionStorage.removeItem('studentCtx');
+    location.href = '/student/login.html';
+  });
+})();
+</script>
+
+</body>
+</html>

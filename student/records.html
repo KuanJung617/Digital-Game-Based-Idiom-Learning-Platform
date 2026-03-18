@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>學習成果紀錄</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <style>
+    body { padding: 20px; }
+    .record-card { border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2>📊 學習成果</h2>
+      <a id="backHome" href="student_home.html" class="btn btn-outline-secondary">返回學生首頁</a>
+    </div>
+
+    <div id="studentInfo" class="mb-4 alert alert-info"></div>
+
+    <div id="recordsContainer"></div>
+  </div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+/* ===== 基礎工具 ===== */
+const socket = io();
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
+
+/* ===== 顯示學生資訊 ===== */
+let currentStudent = {};
+(function initStudentInfo(){
+  const raw = sessionStorage.getItem('studentCtx');
+  if (!raw) { location.href = '/student/login.html'; return; }
+  try { currentStudent = JSON.parse(raw); } catch { sessionStorage.removeItem('studentCtx'); location.href='/student/login.html'; return; }
+  const cls = currentStudent.className?.trim();
+  const no  = currentStudent.number?.trim();
+  const name= currentStudent.name?.trim() || '同學';
+  if (!cls || !no) { sessionStorage.removeItem('studentCtx'); location.href='/student/login.html'; return; }
+  $('#studentInfo').innerHTML = `班級：<b>${esc(cls)}</b> ／ 座號：<b>${esc(no)}</b> ／ 姓名：<b>${esc(name)}</b>`;
+  socket.emit('initStudentrom', cls, no, 'studentstudy');
+
+  // ✅ 請求伺服器提供該學生作答紀錄
+  socket.emit('getStudentRecords', { className: cls, number: no });
+})();
+
+/* ===== 接收伺服器回傳紀錄 ===== */
+socket.on('studentRecordsResult', rows => {
+  const recordsContainer = $('#recordsContainer');
+  if (!rows || rows.length === 0) {
+    recordsContainer.innerHTML = `<div class="alert alert-info">尚無任何作答紀錄。</div>`;
+    return;
+  }
+
+  recordsContainer.innerHTML = '';
+  rows.forEach(r => {
+    // 計算當週答對題數
+    const correctCount = r.detail.filter(q => q.RightWrong === 1).length;
+
+    const card = document.createElement('div');
+    card.className = 'card record-card mb-3 shadow-sm';
+    card.innerHTML = `
+      <div class="card-body">
+        <h5 class="card-title">第 ${r.week} 週測驗</h5>
+        <p class="card-text">成績：<span class="fw-bold text-success">${r.score}</span> / 21 題</p>
+        <p class="text-muted">繳交時間：${rFormat(r.submit_time)}</p>
+        <button class="btn btn-outline-primary btn-sm" data-week="${r.week}">查看詳情</button>
+      </div>
+    `;
+    recordsContainer.appendChild(card);
+
+    // 詳細資料按鈕
+    card.querySelector('button').addEventListener('click', () => showDetails(r.week, r.detail));
+  });
+});
+
+/* ===== 詳細題目顯示 ===== */
+function showDetails(week, detail) {
+  const recordsContainer = $('#recordsContainer');
+  let html = `<h4 class="mt-4">📖 第 ${week} 週詳解</h4>`;
+
+  detail.forEach((q, i) => {
+    let ansDisplay = q.Ans || "<span class='text-muted'>未作答</span>";
+    let status = "";
+
+    // 如果是開放題（開放題不判對錯）
+    if (q.type === "open") {
+      status = q.Ans
+        ? "<span class='text-primary'>📝 已作答</span>"
+        : "<span class='text-muted'>⚠️ 未作答</span>";
+    } else if (q.type === "tf") {
+      // ✅ 是非題答案顯示 1->是、0->否
+      ansDisplay = q.Ans === "1" ? "是" : q.Ans === "0" ? "否" : "<span class='text-muted'>未作答</span>";
+      status =
+        q.RightWrong === 1
+          ? "<span class='text-success'>✅ 正確</span>"
+          : "<span class='text-danger'>❌ 錯誤</span>";
+    } else {
+      // 選擇題
+      status =
+        q.RightWrong === 1
+          ? "<span class='text-success'>✅ 正確</span>"
+          : "<span class='text-danger'>❌ 錯誤</span>";
+    }
+
+    html += `
+      <div class="border rounded p-2 mb-2">
+        <strong>第 ${i + 1} 題</strong><br>
+        題目：${esc(q.Q || "（題目遺失）")}<br>
+        你的答案：${ansDisplay}<br>
+        ${status}
+      </div>
+    `;
+  });
+
+  recordsContainer.innerHTML =
+    html + `<button class="btn btn-secondary mt-3" id="backBtn">返回列表</button>`;
+  $('#backBtn').onclick = () =>
+    socket.emit('getStudentRecords', {
+      className: currentStudent.className,
+      number: currentStudent.number,
+    });
+}
+
+
+/* ===== 工具函數 ===== */
+function rFormat(ts){
+  if (!ts) return '-';
+  const d = new Date(ts);
+  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+</script>
+
+</body>
+</html>

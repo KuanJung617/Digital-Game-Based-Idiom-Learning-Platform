@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>學生登入</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container d-flex justify-content-center align-items-center vh-100">
+  <div class="card shadow p-4" style="max-width: 400px; width: 100%;">
+    <h3 class="text-center mb-4">成語挑戰 - 學生登入</h3>
+
+    <form id="loginForm">
+      <div class="mb-3">
+        <label for="classSelect" class="form-label">班級</label>
+        <select class="form-select" id="classSelect" required>
+          <option value="">請選擇班級</option>
+          <option value="403">403班</option>
+          <option value="404">404班</option>
+          <option value="501">501班</option>
+          <option value="503">503班</option>
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label for="studentNumber" class="form-label">座號</label>
+        <input type="number" class="form-control" id="studentNumber" placeholder="請輸入座號" min="1" required>
+      </div>
+
+      <div class="d-grid gap-2">
+        <button type="reset" class="btn btn-secondary">清除</button>
+        <button type="submit" class="btn btn-primary">登入</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+	const socket = io();
+	 const $ = (s) => document.querySelector(s);
+
+  // 登入頁一載入就清除先前的 session 資訊
+  document.addEventListener('DOMContentLoaded', () => {
+    sessionStorage.removeItem('studentCtx'); // 只清這個鍵
+    // 若要全部清空則用：sessionStorage.clear();
+  });
+
+  $('#loginForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+
+    // 送出前再保險清一次
+    sessionStorage.removeItem('studentCtx');
+
+    const className = $('#classSelect').value.trim();
+    const number    = $('#studentNumber').value.trim();
+
+    if (!className || !number) return alert('請完整輸入班級與座號！');
+
+    socket.emit('studentLogin', { className, number });
+
+    socket.once('studentLoginResult', (ok) => {
+      if (!ok) return alert('登入失敗，請稍後再試');
+      // 登入成功後再寫入新的 session 值並導向
+      sessionStorage.setItem('studentCtx', JSON.stringify({ className, number }));
+      const qs = new URLSearchParams({ cls: className, no: number }).toString();
+      window.location.href = `/student/student_home.html`;
+    });
+  });
+</script>
+</body>
+</html>
