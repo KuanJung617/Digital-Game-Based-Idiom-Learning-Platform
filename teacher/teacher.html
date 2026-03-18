@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教師系統</title>
+
+    <!-- ✅ Chart.js 最新版 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <link rel="stylesheet" href="teacher.css">
+</head>
+
+<body>
+    <h1>📘 教師管理系統</h1>
+
+    <!-- 🔹 導覽列 -->
+    <nav>
+        <a onclick="showPage('browse')">中文成語瀏覽</a> |
+        <a onclick="showPage('task')">教學任務管理</a> |
+        <a onclick="showPage('quiz')">測驗活動</a> |
+        <a onclick="showPage('stats')">統計分析</a> |
+        <a href="./../home.html">返回首頁</a>
+    </nav>
+
+    <!-- 🔹 成語瀏覽 -->
+    <section id="browse" class="page active">
+        <div class="module">
+            <h2>📖 中文成語瀏覽</h2>
+            <label for="stroke_countInput">請輸入首字的筆劃數：</label>
+            <input type="number" id="stroke_countInput" min="1" max="50" placeholder="例如：8" style="width: 120px; font-size: 16px;">
+            <button onclick="loadChengyuList()">確認</button>&nbsp;&nbsp;&nbsp;
+            <input type="text" id="chengyuInput" placeholder="輸入成語" style="font-size: 16px;">
+            <button onclick="searchChengyu()">查詢</button>
+
+            <h3>中文成語清單</h3>
+            <div id="chengyuList"></div>
+        </div>
+
+    </section>
+
+    <!-- 🔹 教學任務管理 -->
+    <section id="task" class="page">
+        <div class="module">
+            <h2>📚 教學任務管理</h2>
+
+            <!-- 選擇週次 -->
+            <label for="weekSelect">選擇週次：</label>
+            <select id="weekSelect"></select>
+            <button onclick="addNewWeek()">➕ 新增週次</button>
+            <button onclick="SeachWeek()">📖 查詢週次</button>
+
+            <ul id="taskItems"></ul>
+            <button onclick="clearTaskList()">🗑️ 清空任務清單</button>
+            <button onclick="saveTask()">✅ 儲存教學任務</button>
+
+        </div>
+    </section>
+
+    <!-- 測驗活動 -->
+    <section id="quiz" class="page">
+        <div class="module">
+            <h2>📝 測驗活動</h2>
+            <p>以下是根據教學任務自動產生的題目，您可以直接編輯：</p>
+			<label for="weekFilter">選擇週次：</label>
+			<select id="weekFilter"></select>
+            <div id="quizWeekSelectContainer"></div>
+            <div id="quizContainer"></div>
+
+        </div>
+    </section>
+
+    <!-- 🔹 統計分析 -->
+    <section id="stats" class="page">
+        <div class="module">
+            <h2>📊 統計分析</h2>
+            <canvas id="statsChart" width="600" height="400"></canvas>
+			<!-- 班級清單 -->
+			<div id="classList" class="mb-3"></div>
+			<!-- 學生列表 -->
+			<div id="studentList"></div>
+            <script src="stats.js"></script>
+        </div>
+    </section>
+
+
+    <!-- 成語詳細 Modal -->
+    <div class="modal fade" id="chengyuModal" tabindex="-1" aria-labelledby="chengyuModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="chengyuModalLabel">成語詳細</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉"></button>
+                </div>
+                <div class="modal-body" id="result">
+                    <!-- 這裡會用 JS 動態插入成語資料 -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 預覽測驗 Modal -->
+    <div class="modal fade" id="quizPreviewModal" tabindex="-1" aria-labelledby="quizPreviewLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+    <div class="modal-content">
+      <div class="modal-header sticky-top bg-white">
+        <h5 class="modal-title" id="quizPreviewLabel">📑 測驗預覽</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉"></button>
+      </div>
+
+      <div class="modal-body" id="quizPreviewContent">
+      </div>
+
+      <div class="modal-footer sticky-bottom bg-white">
+        <span class="me-auto small text-muted" id="quizPreviewMeta"></span>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+    <!-- Socket.io -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        //全部都直接使用socket呼叫
+        const socket = io();
+
+        socket.emit("searchChengyuOpen");
+        socket.on("searchResultInit", (list) => {
+            const container = document.getElementById('chengyuList');
+            container.innerHTML = '';
+            if (!list || list.length === 0) {
+                container.innerHTML = `<p style="color:red;">沒有找到該難度的成語</p>`;
+                return;
+            }
+            list.forEach(item => {
+                const btn = document.createElement('button');
+                btn.textContent = item.idiom;
+                btn.onclick = () => showChengyuDetail(item.idiom);
+                container.appendChild(btn);
+            });
+
+
+        });
+        //呼叫查詢個別的成語資料
+        function showChengyuDetail(word) {
+            socket.emit('chengyuWord', word);
+        }
+        socket.on('chengyuWordResult', (d) => {
+		  const r = $('result');
+		  r.innerHTML = !d
+			? '<p class="text-danger">未找到該成語</p>'
+			: `
+			  <h4>${esc(d.idiom)}</h4>
+			  <p><strong>注音：</strong> ${esc(d.zhuyin)}</p>
+			  <p><strong>釋義：</strong> ${esc(d.meaning)}</p>
+			  <p><strong>用法說明：</strong> ${esc(d.usage_category)}</p>
+			  <p><strong>例句：</strong> ${esc(d.usage_example)}</p>
+			  <p><strong>近義成語：</strong> ${esc(d.near_synonyms)}</p>
+			  <p><strong>反義成語：</strong> ${esc(d.opposite_idioms)}</p>
+			  <div class="d-flex gap-2">
+				<button class="btn btn-outline-primary btn-sm" onclick="playAudio('${esc(d.idiom)}')">🔊 播放語音</button>
+				<button class="btn btn-success btn-sm" onclick="addToTeachingTask('${esc(d.idiom)}')">✅ 加入教學任務</button>
+			  </div>
+			`;
+		  new bootstrap.Modal($('chengyuModal')).show();
+		});
+		const $ = (id) => document.getElementById(id);
+		const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]||m));
+		//語音撥放
+		function playAudio(word){
+			socket.emit('ttsWord', String(word || '').trim());
+		}
+		// 收到音訊→建立 URL→播放
+		socket.on('ttsWordResult', ({ data, mime }) => {
+		  try {
+			const blob = b64ToBlob(data, mime || 'audio/mpeg');
+			const url = URL.createObjectURL(blob);
+			const audio = new Audio(url);
+			audio.play().catch(console.warn);
+			audio.onended = () => URL.revokeObjectURL(url);
+		  } catch (e) {
+			console.error('播放失敗', e);
+		  }
+		});
+		// Base64 轉 Blob
+		const b64ToBlob = (b64, mime='application/octet-stream') => {
+		  const bin = atob(b64);
+		  const len = bin.length;
+		  const buf = new Uint8Array(len);
+		  for (let i = 0; i < len; i++) buf[i] = bin.charCodeAt(i);
+		  return new Blob([buf], { type: mime });
+		};
+		//加入教學任務
+		function addToTeachingTask(word){
+			socket.emit('addToTeachingTask', String(word || '').trim());
+		}
+		socket.on('addToTeachingTaskResult', (res) => {
+		  // 你可改成 Toast/Modal；這裡用最簡 alert 示範
+		  if (!res?.ok) return alert(`加入失敗：${res?.message || 'Unknown error'}`);
+		  if (res.duplicate) return alert(`已在清單中：${res.idiom}`);
+		  alert(`已加入教學任務（#${res.id}）：${res.idiom}`);
+		});
+		//依照筆畫查詢功能
+		function loadChengyuList(){
+			var stroke_countInput = document.getElementById('stroke_countInput').value;
+			socket.emit("stroke_count",stroke_countInput);
+		}
+		socket.on("stroke_count_Result", (list) => {
+            const container = document.getElementById('chengyuList');
+            container.innerHTML = '';
+            if (!list || list.length === 0) {
+                container.innerHTML = `<p style="color:red;">沒有找到該難度的成語</p>`;
+                return;
+            }
+            list.forEach(item => {
+                const btn = document.createElement('button');
+                btn.textContent = item.idiom;
+                btn.onclick = () => showChengyuDetail(item.idiom);
+                container.appendChild(btn);
+            });
+		});
+		//成語查詢功能
+		function searchChengyu(){
+			var chengyuInput = document.getElementById('chengyuInput').value;
+			socket.emit('searchChengyu',chengyuInput);
+		}
+		socket.on('searchChengyuResult', (list) => {
+            const container = document.getElementById('chengyuList');
+            container.innerHTML = '';
+            if (!list || list.length === 0) {
+                container.innerHTML = `<p style="color:red;">沒有找到該難度的成語</p>`;
+                return;
+            }
+            list.forEach(item => {
+                const btn = document.createElement('button');
+                btn.textContent = item.idiom;
+                btn.onclick = () => showChengyuDetail(item.idiom);
+                container.appendChild(btn);
+            });
+		});
+		//切換頁簽的功能
+		function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+
+            // ✅ 當切到統計分析時更新圖表
+            if (pageId === "stats") {
+                socket.emit("statsInit");
+            }else if(pageId === "browse"){
+				socket.emit("searchChengyuOpen");
+			}else if(pageId === "task"){
+				socket.emit("taskPageInit");
+			}else if(pageId === "quiz"){
+				socket.emit("quizInit");
+			}
+        } 
+		/*教學管理*/
+        socket.on('taskPageInitResult', (list = []) => {
+		  const container = document.getElementById('taskItems');
+		  container.innerHTML = '';
+
+		  if (!Array.isArray(list) || list.length === 0) {
+			container.innerHTML = '<p style="color:red;">目前沒有資料</p>';
+			return;
+		  }
+
+		  list.forEach((item) => {
+			  const li = document.createElement('li');
+			  li.textContent = String(item?.idiom ?? '');
+			  li.dataset.id = item?.id ?? '';
+			  li.dataset.idiom = item?.idiom ?? '';
+
+			  const btn = document.createElement('button');
+			  btn.textContent = '❌ 移除';
+			  btn.onclick = () => removeFromTask(item.id || item.idiom);
+
+			  li.appendChild(btn);
+			  container.appendChild(li);
+			});
+		});
+		//新增週次按鈕
+		function addNewWeek() {
+			const sel = $('weekSelect');
+			// 找目前最大 value（數字）
+			let maxVal = 0;
+			for (const opt of sel.options) {
+			  const v = parseInt(opt.value, 10);
+			  if (!isNaN(v) && v > maxVal) maxVal = v;
+			}
+			const next = maxVal + 1;
+
+			const opt = document.createElement('option');
+			opt.value = String(next);
+			opt.textContent = `第${next}周`; // 第一周、第二周...
+			sel.appendChild(opt);
+			sel.value = String(next); // 追加後自動選取
+		}
+		//刪除選項
+		const pendingRemove = { ids: new Set(), idioms: new Set() };
+
+		function removeFromTask(key) {
+		  const box = document.getElementById('taskItems');
+		  const isId = typeof key === 'number' || /^\d+$/.test(String(key));
+		  const sel = isId
+			? `li[data-id="${key}"]`
+			: `li[data-idiom="${CSS.escape(String(key))}"]`;
+
+		  const li = box.querySelector(sel);
+		  if (!li) return;
+
+		  // 加入暫存（有 id 優先用 id，否則用 idiom）
+		  const id = li.dataset.id && /^\d+$/.test(li.dataset.id) ? Number(li.dataset.id) : null;
+		  const idiom = li.dataset.idiom || (li.firstChild?.nodeValue || '').trim();
+		  if (id != null) pendingRemove.ids.add(id);
+		  else if (idiom) pendingRemove.idioms.add(idiom);
+
+		  // 從畫面移除
+		  li.remove();
+
+		  // 清空後顯示「目前沒有資料」
+		  if (!box.querySelector('li')) {
+			box.innerHTML = '<p style="color:red;">目前沒有資料</p>';
+		  }
+		}
+		//清除清單
+		function clearTaskList(){
+			const container = document.getElementById('taskItems');
+			container.innerHTML = '';
+		}
+		//儲存教學任務
+		function saveTask() {
+		  const listEl = document.getElementById('taskItems');
+		  const selEl  = document.getElementById('weekSelect');
+
+		  const items = [...listEl.querySelectorAll('li')].map(li => ({
+			id: li.dataset.id ? Number(li.dataset.id) : undefined,
+			idiom: li.dataset.idiom || (li.firstChild?.nodeValue || '').trim()
+		  }));
+
+		  const payload = {
+			// 留在清單上的 → 設為選定週次
+			week: Number(selEl.value || 0),
+			ids: items.filter(x => Number.isFinite(x.id)).map(x => x.id),
+			idioms: items.filter(x => !Number.isFinite(x.id)).map(x => x.idiom),
+
+			// 被刪除的 → 設為 NULL
+			unsetIds: Array.from(pendingRemove.ids),
+			unsetIdioms: Array.from(pendingRemove.idioms),
+		  };
+
+		  socket.emit('saveTask', payload);
+		}
+		socket.on('saveTaskResult', (res) => {
+		  if (!res?.ok) {
+			alert(res?.message || '儲存失敗');
+			return;
+		  }
+		  alert(`已更新 ${res.updated} 筆（week=${res.week}），已清除 ${res.unset || 0} 筆（week=null）`);
+
+		  // 清空暫存
+		  pendingRemove.ids.clear();
+		  pendingRemove.idioms.clear();
+
+		  // 重新載入畫面資料
+		  socket.emit('taskPageInit');
+		});
+		function SeachWeek(){
+			const week  = document.getElementById('weekSelect').value;
+			socket.emit("taskPageSeearch",week);
+		}
+		
+		/*測驗活動*/
+		socket.on('quizInitResult', (rows = []) => {
+	  const sel  = document.getElementById('weekFilter');     // 已存在
+	  const cont = document.getElementById('quizContainer');  // 已存在
+
+	  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({
+		'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'
+	  }[m]));
+
+	  // 取所有有效週次並排序
+	  const weeks = [...new Set(rows.map(r => r.week).filter(w => Number.isInteger(Number(w))))]
+					.map(Number).sort((a,b)=>a-b);
+
+	  if (!weeks.length) {
+		sel.innerHTML = '';
+		cont.innerHTML = '<p class="text-danger">目前沒有資料</p>';
+		return;
+	  }
+
+	  // 下拉：第1週、 第2週 …
+	  sel.innerHTML = weeks.map(w => `<option value="${w}">第 ${w} 週</option>`).join('');
+
+	  sel.onchange = () => renderWeek(Number(sel.value));
+	  sel.value = weeks[0];
+	  renderWeek(weeks[0]);
+
+	  // 渲染單週的所有成語表單
+	  function renderWeek(week) {
+		const list = rows.filter(r => Number(r.week) === Number(week));
+		if (!list.length) {
+		  cont.innerHTML = '<p class="text-muted">此週沒有資料</p>';
+		  return;
+		}
+
+		cont.innerHTML = `
+		  <h4 class="mb-3">測驗活動</h4>
+		  ${list.map((r, idx) => formCard(r, idx)).join('')}
+		  <div class="d-flex gap-2 mt-3">
+			<button id="btnSaveQuiz" class="btn btn-primary">💾 儲存測驗</button>
+			<button id="btnPreviewQuiz" class="btn btn-secondary">👀 預覽測驗</button>
+		  </div>
+		`;
+
+		// 綁定按鈕
+		document.getElementById('btnSaveQuiz').onclick = () => saveQuiz(week, list.length);
+		document.getElementById('btnPreviewQuiz').onclick = () => previewQuiz(week, list.length);
+	  }
+
+	  // 產生單張卡片表單（對應你截圖的欄位）
+	  function formCard(r, idx) {
+		const id = `q${idx}`;
+		return `
+		<div class="card mb-3">
+		  <div class="card-header bg-white">
+			<strong>📖 成語：${esc(r.idiom)}</strong>
+		  </div>
+		  <div class="card-body">
+			<div class="mb-3">
+			  <label class="form-label">語意選擇題題目：</label>
+			  <textarea class="form-control" id="${id}-mcq-title" rows="2">${esc(r.usage_category || '')}</textarea>
+			  <div class="form-text"></div>
+			</div>
+
+			<div class="mb-3">
+			  <label class="form-label">選項（每行一個）：</label>
+			  <textarea class="form-control" id="${id}-mcq-options" rows="2"
+				placeholder="每行一個選項">${esc(r.idiom)}</textarea>
+			</div>
+
+			<div class="mb-3">
+			  <label class="form-label">正確答案：</label>
+			  <input class="form-control" id="${id}-mcq-answer" value="${esc(r.idiom)}" />
+			</div>
+
+			<hr/>
+
+			<div class="mb-3">
+			  <label class="form-label">相似成語判斷題題目：</label>
+			  <textarea class="form-control" id="${id}-tf-title" rows="2">『 』是否可以用『${esc(r.idiom)}』來代替？</textarea>
+			</div>
+
+			<div class="mb-3">
+			  <label class="form-label d-block">正確答案：</label>
+			  <div class="form-check form-check-inline">
+				<input class="form-check-input" type="radio"
+					   name="${id}-tf-answer" id="${id}-tf-true" value="true" checked>
+				<label class="form-check-label" for="${id}-tf-true">✅ 對</label>
+			  </div>
+			  <div class="form-check form-check-inline">
+				<input class="form-check-input" type="radio"
+					   name="${id}-tf-answer" id="${id}-tf-false" value="false">
+				<label class="form-check-label" for="${id}-tf-false">❌ 錯</label>
+			  </div>
+			</div>
+
+			<div class="mb-3">
+			  <label class="form-label">開放題題目：</label>
+			  <textarea class="form-control" id="${id}-open-title" rows="2"
+				placeholder="例：請用『${esc(r.idiom)}』造句，並結合你的生活經驗。">請用『${esc(r.idiom)}』造句，並結合你的生活經驗。</textarea>
+			</div>
+
+			<!-- 隱藏欄位：原始資料 -->
+			<input type="hidden" id="${id}-idiom" value="${esc(r.idiom)}"/>
+			<input type="hidden" id="${id}-id" value="${esc(r.id ?? '')}"/>
+		  </div>
+		</div>`;
+	  }
+
+	  // 蒐集表單資料
+	  function collect(week, count) {
+		const data = [];
+		for (let i = 0; i < count; i++) {
+		  const p = (k) => document.getElementById(`q${i}-${k}`);
+		  data.push({
+			id:      p('id')?.value || null,
+			idiom:   p('idiom')?.value || '',
+			week,
+			mcq: {
+			  title:   p('mcq-title')?.value || '',
+			  options: (p('mcq-options')?.value || '').split('\n').map(s=>s.trim()).filter(Boolean),
+			  answer:  p('mcq-answer')?.value || ''
+			},
+			tf: {
+			  title:  p('tf-title')?.value || '',
+			  answer: !!p('tf-answer')?.checked
+			},
+			open: {
+			  title: p('open-title')?.value || ''
+			}
+		  });
+		}
+		return data;
+	  }
+
+	  // 儲存
+	  function saveQuiz(week, count) {
+		const payload = { week, items: collect(week, count) };
+		// 這裡發給後端自行儲存（你可改事件名）
+		socket.emit('quizSave', payload);
+	  }
+socket.on('quizSaveResult', (res) => {
+  if (!res?.ok) return alert(res?.message || '儲存失敗');
+  alert(`已儲存第 ${res.week} 週，共 ${res.saved} 個題組`);
+  // 需要的話可刷新頁面或重新撈清單
+  // socket.emit('quizInit'); 或自訂刷新
+});
+	  // 預覽（簡單示範，可改成 Modal）
+	 function previewQuiz(week, count) {
+  const items = collect(week, count);
+  const cont  = document.getElementById('quizPreviewContent');
+  const label = document.getElementById('quizPreviewLabel');
+
+  if (!items.length) {
+    cont.innerHTML = '<p class="text-muted mb-0">沒有可預覽的題目</p>';
+    new bootstrap.Modal(document.getElementById('quizPreviewModal')).show();
+    return;
+  }
+
+  cont.innerHTML = items.map((q, gi) => {
+    // ① 選擇題：將 options 以換行切割
+    const mcqName = `pv-${gi}-mcq`;
+    const mcqOpts = normalizeOptions(q.mcq?.options).map((opt, oi) => `
+      <div class="form-check">
+        <input class="form-check-input" type="radio"
+               id="${mcqName}-${oi}" name="${mcqName}" value="${esc(opt)}">
+        <label class="form-check-label" for="${mcqName}-${oi}">${esc(opt)}</label>
+      </div>
+    `).join('') || '<div class="text-muted">（未提供選項）</div>';
+
+    // ② 是非題：兩個 radio，預設都不勾選
+    const tfName = `pv-${gi}-tf`;
+    const tfBlock = `
+      <div class="d-flex gap-4 justify-content-center">
+        <div class="form-check">
+          <input class="form-check-input" type="radio" id="${tfName}-t" name="${tfName}" value="true" >
+          <label class="form-check-label" for="${tfName}-t">✅ 對</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" id="${tfName}-f" name="${tfName}" value="false" >
+          <label class="form-check-label" for="${tfName}-f">❌ 錯</label>
+        </div>
+      </div>`;
+
+    return `
+      <div class="mb-3">
+        <div class="fw-bold mb-2">🧩 成語：${esc(q.idiom || '')}</div>
+
+        <div class="card mb-3">
+          <div class="card-header text-center bg-white">第 1 題</div>
+          <div class="card-body">
+            <div class="text-center mb-3">${esc(q.mcq?.title || '（未設定題幹）')}</div>
+            <div class="ps-3">${mcqOpts}</div>
+          </div>
+        </div>
+
+        <div class="card mb-3">
+          <div class="card-header text-center bg-white">第 2 題</div>
+          <div class="card-body">
+            <div class="text-center mb-3">${esc(q.tf?.title || '（未設定題幹）')}</div>
+            ${tfBlock}
+          </div>
+        </div>
+
+        <div class="card mb-3">
+          <div class="card-header text-center bg-white">第 3 題</div>
+          <div class="card-body">
+            <div class="text-center mb-3">${esc(q.open?.title || '（未設定題幹）')}</div>
+            <textarea class="form-control" rows="4" placeholder="請輸入答案…" ></textarea>
+          </div>
+        </div>
+      </div>
+      <hr/>
+    `;
+  }).join('');
+
+  if (label) label.textContent = `📑 測驗預覽（第 ${week} 週）`;
+  new bootstrap.Modal(document.getElementById('quizPreviewModal')).show();
+  
+}
+
+	});
+function normalizeOptions(opts) {
+  if (Array.isArray(opts)) {
+    return opts.map(s => String(s).trim()).filter(Boolean);
+  }
+  return String(opts ?? '')
+    .split(/\r?\n/)        // 以換行分割
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    initStatsModule();
+});
+
+    </script>
+</body>
+
+</html>
