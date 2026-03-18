@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>🧩 成語拼圖遊戲（訪客）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .puzzle-container {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+    .puzzle-piece, .puzzle-slot {
+      width: 60px;
+      height: 60px;
+      border: 2px dashed #aaa;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 1.5rem;
+      cursor: grab;
+      background: #fff;
+    }
+    .puzzle-slot {
+      border: 2px solid #007bff;
+      background: #f8f9fa;
+    }
+    .correct {
+      background: #d4edda !important;
+      border-color: #28a745 !important;
+    }
+  </style>
+</head>
+<body class="bg-light">
+
+<div class="container py-4">
+  <!-- 標題 -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>🧩 成語拼圖遊戲（訪客）</h2>
+    <button class="btn btn-outline-secondary" onclick="backToStage()">返回遊戲選擇</button>
+  </div>
+
+  <!-- 模式提示 -->
+  <div class="alert alert-warning">
+    🧑‍💻 目前為 <strong>訪客模式</strong>，題目為系統隨機題庫。
+  </div>
+
+  <!-- 題目說明 -->
+  <div class="mb-3">
+    <h5 id="questionTitle">題目：請拼出正確的成語</h5>
+    <p class="text-muted" id="hint">請根據提示拼出成語</p>
+  </div>
+
+  <!-- 拼圖區域 -->
+  <div class="puzzle-container mb-4" id="puzzleSlots"></div>
+
+  <!-- 拼圖碎片 -->
+  <div class="puzzle-container" id="puzzlePieces"></div>
+
+  <!-- 回饋區 -->
+  <div id="feedback" class="text-center mt-3 fw-bold"></div>
+
+  <!-- 按鈕 -->
+  <div class="mt-4 text-center">
+    <button class="btn btn-primary me-2" id="checkAnswer">確認答案</button>
+    <button class="btn btn-secondary me-2" id="clearPuzzle">清除</button>
+    <button class="btn btn-success" id="nextQuestion" disabled>下一題</button>
+  </div>
+</div>
+
+<!-- Bootstrap JS + Socket.io -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+
+  let quizData = {};
+  let currentIndex = 0;
+  let shuffledQuestions = [];
+
+  // ------------------ 題庫初始化 ------------------
+  socket.emit("getFreeQuiz");
+  socket.once("freeQuiz", (res) => {
+    if (res.success && res.data.length > 0) {
+      const filtered = res.data.filter(q => q.idiom && q.idiom.length === 4);
+      if (filtered.length === 0) {
+        showFeedback("目前沒有符合的四字成語題目！", "danger");
+        return;
+      }
+      quizData = {
+        name: "自由練習題庫",
+        questions: filtered.map(q => ({ idiom: q.idiom, chars: q.idiom.split("") }))
+      };
+      startGame();
+    } else {
+      showFeedback("無法載入自由練習題庫！", "danger");
+    }
+  });
+
+  // ------------------ 遊戲開始 ------------------
+  function startGame() {
+
+    shuffledQuestions = shuffleArray([...quizData.questions]);
+    currentIndex = 0;
+    initPuzzle();
+  }
+
+  // ------------------ 初始化拼圖 ------------------
+  function initPuzzle() {
+    document.getElementById("feedback").innerHTML = "";
+    document.getElementById("nextQuestion").disabled = true;
+
+    if (currentIndex >= shuffledQuestions.length) {
+      document.getElementById("puzzleSlots").innerHTML = "";
+      document.getElementById("puzzlePieces").innerHTML = "";
+      showFeedback("🎉 所有題目都完成了！", "success");
+      document.getElementById("checkAnswer").disabled = true;
+      document.getElementById("clearPuzzle").disabled = true;
+      document.getElementById("nextQuestion").disabled = true;
+      return;
+    }
+
+    const currentQuestion = shuffledQuestions[currentIndex];
+    const idiomChars = currentQuestion.chars;
+    const shuffled = shuffleArray([...idiomChars]);
+
+    const slotsContainer = document.getElementById("puzzleSlots");
+    const piecesContainer = document.getElementById("puzzlePieces");
+    slotsContainer.innerHTML = "";
+    piecesContainer.innerHTML = "";
+
+    idiomChars.forEach(ch => {
+      const slot = document.createElement("div");
+      slot.classList.add("puzzle-slot");
+      slot.dataset.answer = ch;
+      slotsContainer.appendChild(slot);
+    });
+
+    shuffled.forEach(ch => {
+      const piece = document.createElement("div");
+      piece.classList.add("puzzle-piece");
+      piece.textContent = ch;
+      piece.draggable = true;
+      piecesContainer.appendChild(piece);
+    });
+
+    initDragEvents();
+  }
+
+  // ------------------ 拖曳事件 ------------------
+  function initDragEvents() {
+    const pieces = document.querySelectorAll(".puzzle-piece");
+    const slots = document.querySelectorAll(".puzzle-slot");
+
+    pieces.forEach(piece => {
+      piece.addEventListener("dragstart", e => {
+        e.dataTransfer.setData("text", piece.textContent);
+      });
+    });
+
+    slots.forEach(slot => {
+      slot.addEventListener("dragover", e => e.preventDefault());
+      slot.addEventListener("drop", e => {
+        e.preventDefault();
+        const text = e.dataTransfer.getData("text");
+        slot.textContent = text;
+      });
+    });
+  }
+
+  // ------------------ 確認答案 ------------------
+  document.getElementById("checkAnswer").addEventListener("click", () => {
+    const slots = document.querySelectorAll(".puzzle-slot");
+    let userAnswer = "";
+    let correct = true;
+
+    slots.forEach(slot => {
+      userAnswer += slot.textContent;
+      if (slot.textContent !== slot.dataset.answer) {
+        correct = false;
+        slot.classList.remove("correct");
+      } else {
+        slot.classList.add("correct");
+      }
+    });
+
+    if (userAnswer.length < 4) {
+      showFeedback("請先將所有字填完再確認！", "warning");
+      return;
+    }
+
+    if (correct) {
+  socket.emit("searchChengyu", { word: userAnswer });  // 🔥 改成物件
+
+  socket.once("searchResult", (res) => {  // 🔥 事件名稱改為 searchResult
+    if (res?.meaning) {
+      showFeedback(`✅ 答對了！「${userAnswer}」<br><small class="text-muted">${res.meaning}</small>`, "success");
+    } else {
+      showFeedback(`✅ 答對了！但查無「${userAnswer}」的釋義資料`, "warning");
+    }
+    document.getElementById("nextQuestion").disabled = false;
+  });
+} else {
+  showFeedback("❌ 再試一次！", "danger");
+}
+
+  });
+
+  // ------------------ 清除拼圖 ------------------
+  document.getElementById("clearPuzzle").addEventListener("click", () => {
+    document.querySelectorAll(".puzzle-slot").forEach(slot => {
+      slot.textContent = "";
+      slot.classList.remove("correct");
+    });
+    document.getElementById("feedback").textContent = "🧹 已清除拼圖，請重新嘗試！";
+    document.getElementById("feedback").style.color = "#6c757d";
+  });
+
+  // ------------------ 下一題 ------------------
+  document.getElementById("nextQuestion").addEventListener("click", () => {
+    currentIndex++;
+    initPuzzle();
+  });
+
+  // ------------------ 工具 ------------------
+  function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+  }
+
+  function showFeedback(message, type) {
+    const feedback = document.getElementById("feedback");
+    feedback.innerHTML = `<div class="alert alert-${type} d-inline-block px-4 py-2">${message}</div>`;
+  }
+
+  function backToStage() {
+    window.location.href = "./../guest_game.html";
+  }
+</script>
+
+</body>
+</html>
